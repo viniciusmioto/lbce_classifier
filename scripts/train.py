@@ -1,108 +1,146 @@
 #!/usr/bin/env python
 """
-Training script for the simplified LBCE-BERT model.
+Simplified training script for LBCE-BERT MVP with a single embedding file and multi-sequence input files.
 
-This script trains an XGBoost model on pre-computed BERT embeddings
-for linear B-cell epitope prediction.
+Usage example:
+    python scripts/train.py \
+      --protein_files data/proteins/neg.txt data/proteins/pos.txt \
+      --embedding_file data/embeddings/CLS_fea.txt
+
+Each protein file can contain multiple sequences (one per line). The embedding file must have one label+embedding vector per sequence, in the same order.
 """
-
 import os
+import sys
 import argparse
 import numpy as np
-import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
-import sys
 
-# Add parent directory to path for importing local modules
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.data_utils import load_bert_embeddings, split_data
-from src.model import XGBoostModel
-from src.evaluation import calculate_metrics, print_metrics, plot_roc_curve, plot_confusion_matrix
+# Ensure project root is on PYTHONPATH so `src` can be imported
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from src.features.aac import AACFeatureExtractor
+from src.features.aap import AAPFeatureExtractor
+from src.features.aat import AATFeatureExtractor
+from src.models.xgboost_model import XGBoostModel
+from src.utils.evaluation import calculate_metrics, print_metrics, plot_roc_curve, plot_confusion_matrix
 
 
 def parse_args():
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description='Train XGBoost model on BERT embeddings')
-    parser.add_argument('--data_file', type=str, default='data/CLS_fea.txt',
-                        help='Path to the file containing BERT embeddings')
-    parser.add_argument('--output_dir', type=str, default='models',
-                        help='Directory to save the trained model and results')
-    parser.add_argument('--output_model', type=str, default='lbce_bert_model.pkl',
-                        help='Filename for the trained model')
-    parser.add_argument('--test_size', type=float, default=0.2,
-                        help='Proportion of the dataset to include in the test split')
-    parser.add_argument('--random_state', type=int, default=42,
-                        help='Random seed for reproducibility')
-    parser.add_argument('--cross_validate', action='store_true',
-                        help='Perform cross-validation')
-    parser.add_argument('--n_splits', type=int, default=5,
-                        help='Number of folds for cross-validation')
-    
+    parser = argparse.ArgumentParser(description='Train LBCE-BERT model')
+    parser.add_argument(
+        '--protein_files', '-p', nargs='+', required=True,
+        help='Paths to one or more protein sequence files (.txt), one sequence per line'
+    )
+    parser.add_argument(
+        '--embedding_file', '-e', required=True,
+        help='Path to a single BERT embedding file (.txt) with labels in the first column, comma-separated'
+    )
+    parser.add_argument(
+        '--test_size', '-t', type=float, default=0.2,
+        help='Fraction of data to reserve as test set (default: 0.2)'
+    )
+    parser.add_argument(
+        '--random_state', '-r', type=int, default=42,
+        help='Random seed for reproducibility'
+    )
     return parser.parse_args()
 
 
+def load_proteins(paths):
+    """Load all sequences from given files, returning list of (seq_id, sequence)."""
+    samples = []
+    for path in paths:
+        base = os.path.splitext(os.path.basename(path))[0]
+        with open(path) as f:
+            for idx, line in enumerate(f):
+                seq = line.strip()
+                if not seq:
+                    continue
+                seq_id = f"{base}_{idx}"
+                samples.append((seq_id, seq))
+    print(f"Loaded {len(samples)} sequences from {len(paths)} file(s)")
+    return samples
+
+
+def load_embeddings(path):
+    """Load labels and embeddings from CSV-style file (no header, comma-separated)."""
+    try:
+        data = np.loadtxt(path, delimiter=',')
+    except ValueError:
+        import pandas as pd
+        data = pd.read_csv(path, header=None).values
+    labels = data[:, 0].astype(int)
+    embeddings = data[:, 1:]
+    print(f"Loaded {len(labels)} labels and {embeddings.shape[1]} embedding features.")
+    return labels, embeddings
+
+
+def extract_one(sequence, embedding):
+    """Extract and concatenate AAC, AAP, AAT, and BERT features for one sample."""
+    aac = AACFeatureExtractor().extract(sequence)
+    aap = AAPFeatureExtractor().extract(sequence)
+    aat = AATFeatureExtractor().extract(sequence)
+    return np.hstack([aac, aap, aat, embedding])
+
+
 def main():
-    """Main function."""
-    # Parse arguments
     args = parse_args()
-    
-    # Create output directory if it doesn't exist
-    os.makedirs(args.output_dir, exist_ok=True)
-    
-    # Load BERT embeddings
-    print(f"Loading BERT embeddings from {args.data_file}...")
-    X, y = load_bert_embeddings(args.data_file)
-    print(f"Loaded {X.shape[0]} samples with {X.shape[1]} features")
-    print(f"Class distribution: {np.sum(y == 1)} positive, {np.sum(y == 0)} negative")
-    
-    # Split data into training and testing sets
-    print(f"Splitting data with test_size={args.test_size}...")
-    X_train, X_test, y_train, y_test = split_data(X, y, test_size=args.test_size, random_state=args.random_state)
-    print(f"Training set: {X_train.shape[0]} samples")
-    print(f"Testing set: {X_test.shape[0]} samples")
-    
-    # Initialize model
-    print("Initializing XGBoost model...")
-    model = XGBoostModel()
-    
-    # Cross-validation
-    if args.cross_validate:
-        print(f"Performing {args.n_splits}-fold cross-validation...")
-        cv_metrics = model.cross_validate(X_train, y_train, n_splits=args.n_splits)
-        
-        # Print average metrics
-        print("Cross-validation results:")
-        for metric, values in cv_metrics.items():
-            print(f"  {metric}: {np.mean(values):.4f} ± {np.std(values):.4f}")
-    
+
+    # Load sequences
+    samples = load_proteins(args.protein_files)
+    seq_ids, sequences = zip(*samples)
+
+    # Load embeddings and labels
+    labels, embeddings = load_embeddings(args.embedding_file)
+
+    # Validate counts
+    n = len(sequences)
+    if n != len(labels) or n != embeddings.shape[0]:
+        sys.exit(
+            f"Error: sequence count ({n}) != labels ({len(labels)}) or embeddings rows ({embeddings.shape[0]})"
+        )
+
+    # Extract features
+    X = np.vstack([
+        extract_one(seq, emb)
+        for seq, emb in zip(sequences, embeddings)
+    ])
+    y = labels
+    print(f"Total samples: {len(y)} (positives: {y.sum()}, negatives: {len(y)-y.sum()})")
+
+    # Split data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y,
+        test_size=args.test_size,
+        random_state=args.random_state,
+        stratify=y
+    )
+
     # Train model
-    print("Training model...")
-    model.train(X_train, y_train, eval_set=(X_test, y_test), early_stopping_rounds=10)
-    
-    # Evaluate model
-    print("Evaluating model on test set...")
-    y_pred = model.predict(X_test)
-    y_pred_prob = model.predict_proba(X_test)
-    
-    # Calculate metrics
-    metrics = calculate_metrics(y_test, y_pred, y_pred_prob)
+    print("Training XGBoost model...")
+    model = XGBoostModel()
+    model.train(X_train, y_train)
+
+    # Evaluate
+    print("Evaluating on test set...")
+    preds = model.predict(X_test)
+    probs = model.predict_proba(X_test)
+    metrics = calculate_metrics(y_test, preds, probs)
     print_metrics(metrics)
-    
-    # Plot ROC curve
-    roc_output_file = './results/roc_curve.png'
-    plot_roc_curve(y_test, y_pred_prob, roc_output_file)
-    print(f"ROC curve saved to {roc_output_file}")
-    
-    # Plot confusion matrix
-    cm_output_file = './results/confusion_matrix.png'
-    plot_confusion_matrix(y_test, y_pred, cm_output_file)
-    print(f"Confusion matrix saved to {cm_output_file}")
-    
-    # Save model
-    model_path = os.path.join(args.output_dir, args.output_model)
-    model.save_model(model_path)
-    print(f"Model saved to {model_path}")
+
+    # Save model and plots
+    out_dir = 'models'
+    os.makedirs(out_dir, exist_ok=True)
+    model_file = os.path.join(out_dir, 'lbce_bert_model.pkl')
+    model.save_model(model_file)
+    print(f"Model saved to {model_file}")
+
+    roc_file = os.path.join(out_dir, 'roc.png')
+    cm_file = os.path.join(out_dir, 'cm.png')
+    plot_roc_curve(y_test, probs, roc_file)
+    plot_confusion_matrix(y_test, preds, cm_file)
+    print(f"ROC curve and confusion matrix saved to {out_dir}")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

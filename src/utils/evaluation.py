@@ -1,13 +1,13 @@
 """
-Evaluation metrics for linear B-cell epitope prediction.
+Evaluation metrics for LBCE-BERT MVP.
 
-This module provides functions for evaluating the performance of the model.
+This module provides functions for evaluating the performance of the LBCE-BERT model.
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict, Optional
+from typing import Dict, List, Tuple, Optional
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     matthews_corrcoef, roc_auc_score, roc_curve, confusion_matrix

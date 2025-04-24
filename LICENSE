@@ -1,6 +1,12 @@
+# LBCE-BERT MVP
+
+This is a Minimal Viable Project (MVP) based on the LBCE-BERT paper for predicting linear B-cell epitopes from protein sequences using pre-computed BERT embeddings.
+
+## License
+
 MIT License
 
-Copyright (c) 2025 Vinícius Mioto
+Copyright (c) 2025 LBCE-BERT MVP Team
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

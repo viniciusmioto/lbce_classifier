@@ -1,15 +1,15 @@
 """
-XGBoost model implementation for linear B-cell epitope prediction.
+XGBoost model implementation for LBCE-BERT MVP.
 
 This module implements the XGBoost model for predicting linear B-cell epitopes
-using pre-computed BERT embeddings.
+from protein sequences using the features extracted from the sequences.
 """
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple, Optional
+from typing import List, Dict, Union, Tuple, Optional
 import xgboost as xgb
-from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, matthews_corrcoef, roc_auc_score
 
 
@@ -18,7 +18,7 @@ class XGBoostModel:
     XGBoost model for predicting linear B-cell epitopes.
     
     This class implements the XGBoost classifier for predicting whether a protein
-    sequence is a linear B-cell epitope based on pre-computed BERT embeddings.
+    sequence is a linear B-cell epitope based on the features extracted from the sequence.
     """
     
     def __init__(self, params: Optional[Dict] = None):
