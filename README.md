@@ -4,66 +4,45 @@ A Minimal Viable Project (MVP) based on the LBCE-BERT paper for predicting linea
 
 ## Overview
 
-This project implements a simplified version of the LBCE-BERT model described in the paper [Prediction of linear B-cell epitopes based on protein sequence features and BERT embeddings](https://www.nature.com/articles/s41598-024-53028-w) by Liu et al. The original implementation can be found at [https://github.com/Lfang111/LBCE-BERT](https://github.com/Lfang111/LBCE-BERT).
+This project implements a simplified version of the LBCE-BERT model described in the paper [Prediction of linear B-cell epitopes based on protein sequence features and BERT embeddings](https://www.nature.com/articles/s41598-024-53028-w) by Liu et al. The original implementation is available at [https://github.com/Lfang111/LBCE-BERT](https://github.com/Lfang111/LBCE-BERT).
 
-The MVP focuses on the core functionality:
-- Loading pre-computed BERT embeddings
-- Implementing feature extraction (AAC, AAP, AAT)
-- Creating a prediction pipeline using XGBoost
-- Training and evaluating the model on the BCPreds dataset
-- Providing a clean prediction interface for new protein sequences
+Key features:
+- Uses pre-computed BERT embeddings for protein sequences
+- Extracts AAC, AAP, and AAT features
+- Trains an XGBoost model to predict epitopes
+- Includes scripts for training, prediction, and evaluation
 
 ## Project Structure
 
 ```
 lbce-bert-mvp/
-├── data/                      # Data directory
-│   ├── raw/                   # Raw data files
-│   ├── processed/             # Processed data files
-│   └── embeddings/            # Pre-computed BERT embeddings
-├── src/                       # Source code
+├── data/
+│   ├── proteins/              # Input protein sequences (.txt)
+│   └── embeddings/            # Pre-computed BERT embeddings (.txt)
+├── src/
 │   ├── features/              # Feature extraction modules
-│   │   ├── __init__.py
-│   │   ├── aac.py             # Amino Acid Composition
-│   │   ├── aap.py             # Amino Acid Pair antigenicity scale
-│   │   ├── aat.py             # Amino Acid Trimer antigenicity scale
-│   │   └── bert.py            # BERT embeddings loader
-│   ├── models/                # Model implementation
-│   │   ├── __init__.py
-│   │   └── xgboost_model.py   # XGBoost model implementation
-│   ├── utils/                 # Utility functions
-│   │   ├── __init__.py
-│   │   ├── data_loader.py     # Data loading utilities
-│   │   └── evaluation.py      # Evaluation metrics
-│   └── __init__.py
-├── notebooks/                 # Jupyter notebooks for demonstration
-│   └── demo.ipynb             # Demo notebook
-├── scripts/                   # Executable scripts
-│   ├── train.py               # Script to train the model
-│   ├── predict.py             # Script to make predictions
-│   └── evaluate.py            # Script to evaluate model performance
+│   ├── models/                # XGBoost model wrapper
+│   └── utils/                 # Data loading and evaluation
+├── scripts/
+│   ├── train.py               # Model training script
+│   ├── predict.py             # Prediction script
+│   └── evaluate.py            # Evaluation script
+├── notebooks/                 # Jupyter notebooks
 ├── tests/                     # Unit tests
-│   ├── __init__.py
-│   ├── test_features.py
-│   ├── test_models.py
-│   └── test_utils.py
-├── requirements.txt           # Project dependencies
-├── setup.py                   # Package setup script
+├── requirements.txt           # Python dependencies
+├── setup.py                   # Setup file
 └── README.md                  # Project documentation
 ```
 
 ## Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/lbce-bert-mvp.git
-cd lbce-bert-mvp
+git clone https://github.com/viniciusmioto/lbce_classifier.git
+cd lbce_classifier
 
-# Create a virtual environment (optional but recommended)
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# Install dependencies
 pip install -r requirements.txt
 ```
 
@@ -71,58 +50,84 @@ pip install -r requirements.txt
 
 ### Training the Model
 
+To train a model on a dataset with pre-computed BERT embeddings and protein sequence files:
+
 ```bash
-python scripts/train.py --dataset bcpreds --output_model models/lbce_bert_model.pkl
+python scripts/train.py \
+    --sequences_dir data/proteins \
+    --embeddings_dir data/embeddings \
+    --labels_file data/processed/labels.csv \
+    --output_model models/lbce_bert_model.pkl
 ```
+
+**Arguments**:
+- `--sequences_dir`: Directory with protein sequence `.txt` files.
+- `--embeddings_dir`: Directory with corresponding BERT embedding `.txt` files.
+- `--labels_file`: CSV file mapping sequence filenames to binary labels (0 = non-epitope, 1 = epitope).
+- `--output_model`: Path where the trained model will be saved.
 
 ### Making Predictions
 
 ```bash
-python scripts/predict.py --input sequences.txt --model models/lbce_bert_model.pkl --output predictions.csv
+python scripts/predict.py \
+    --sequences_dir data/proteins \
+    --embeddings_dir data/embeddings \
+    --model models/lbce_bert_model.pkl \
+    --output predictions.csv
 ```
 
 ### Evaluating Model Performance
 
 ```bash
-python scripts/evaluate.py --test_data data/processed/bcpreds_test.csv --model models/lbce_bert_model.pkl
+python scripts/evaluate.py \
+    --sequences_dir data/proteins \
+    --embeddings_dir data/embeddings \
+    --labels_file data/processed/test_labels.csv \
+    --model models/lbce_bert_model.pkl
 ```
 
-## Data
+## Data Format
 
-This project uses the BCPreds dataset, which contains:
-- 701 epitope sequences (positive samples)
-- 701 non-epitope sequences (negative samples)
-- Each sequence is 20 amino acid residues in length
+- Sequence files: Plain text `.txt` files with a single amino acid sequence per file.
+- Embedding files: Matching `.txt` files containing BERT embeddings (one per sequence).
+- Label file: A CSV with two columns: `filename` and `label`.
 
-The pre-computed BERT embeddings are loaded from the original repository.
+Example:
 
-## Features
+```csv
+filename,label
+P12345.txt,1
+Q67890.txt,0
+```
 
-The model uses the following features:
-1. **Amino Acid Composition (AAC)**: Frequency of each amino acid in the sequence
-2. **Amino Acid Pair antigenicity scale (AAP)**: Antigenicity values for pairs of amino acids
-3. **Amino Acid Trimer antigenicity scale (AAT)**: Antigenicity values for triplets of amino acids
-4. **BERT embeddings**: Pre-computed embeddings from a BERT model trained on protein sequences
+## Features Used
+
+1. **AAC (Amino Acid Composition)**
+2. **AAP (Amino Acid Pair Antigenicity)**
+3. **AAT (Amino Acid Trimer Antigenicity)**
+4. **BERT Embeddings** (precomputed)
 
 ## Model
 
-The model uses XGBoost, a gradient boosting framework, to predict whether a protein sequence is a linear B-cell epitope. The hyperparameters are simplified based on the values reported in the original paper.
+- **Algorithm**: XGBoost
+- **Purpose**: Binary classification (epitope vs. non-epitope)
+- **Tuning**: Uses default/simplified hyperparameters inspired by the original paper.
 
 ## Evaluation Metrics
 
-The model performance is evaluated using:
 - Accuracy
 - Precision
-- Sensitivity (Recall)
-- F1 score
+- Recall (Sensitivity)
+- F1 Score
 - Matthews Correlation Coefficient (MCC)
-- Area Under the Receiver Operating Characteristic curve (AUROC)
+- AUROC (Area Under ROC Curve)
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License – see [LICENSE](LICENSE) for details.
 
 ## Acknowledgements
 
-- Original LBCE-BERT paper: Liu et al., "Prediction of linear B-cell epitopes based on protein sequence features and BERT embeddings", Scientific Reports, 2024
+- Liu et al., “Prediction of linear B-cell epitopes based on protein sequence features and BERT embeddings”, *Scientific Reports*, 2024.
 - Original implementation: [https://github.com/Lfang111/LBCE-BERT](https://github.com/Lfang111/LBCE-BERT)
+
