@@ -27,8 +27,6 @@ lbce-bert-mvp/
 │   ├── train.py               # Model training script
 │   ├── predict.py             # Prediction script
 │   └── evaluate.py            # Evaluation script
-├── notebooks/                 # Jupyter notebooks
-├── tests/                     # Unit tests
 ├── requirements.txt           # Python dependencies
 ├── setup.py                   # Setup file
 └── README.md                  # Project documentation
