@@ -65,7 +65,7 @@ def load_proteins(paths):
 def load_embeddings(path):
     """Load labels and embeddings from CSV-style file (no header, comma-separated)."""
     try:
-        data = np.loadtxt(path, delimiter=',')
+        data = np.loadtxt(path)
     except ValueError:
         import pandas as pd
         data = pd.read_csv(path, header=None).values
